@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5b8bd6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Calculator</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%}
+body{margin:0;height:100vh;height:100dvh;display:flex;align-items:center;justify-content:center;
+  background:#e9eef3;font-family:Roboto,"Segoe UI",system-ui,-apple-system,Arial,sans-serif;overscroll-behavior:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.calc{container-type:inline-size;width:min(96vw,520px,calc(96vh*.7));width:min(96vw,520px,calc(96dvh*.7));
+  background:linear-gradient(#f9fafb,#e8edf2);border-radius:1.5cqw;overflow:hidden;box-shadow:0 2cqw 6cqw rgba(30,50,80,.25)}
+.header{background:#5b8bd6;color:#fff;height:12cqw;display:flex;align-items:center;justify-content:space-between;padding:0 4cqw;font-size:6cqw;font-weight:700}
+.win{width:5cqw;height:5cqw;border:.7cqw solid #fff;border-radius:1cqw}
+.body{padding:2.5cqw .8cqw .8cqw}
+.screen{position:relative;background:#fff;border:.25cqw solid #b9c3cf;border-radius:1.2cqw;height:24cqw;margin:0 0 3cqw;padding:0 3cqw;
+  display:flex;align-items:center;justify-content:flex-end;overflow:hidden}
+#val{flex:none;font-size:13cqw;color:#111;white-space:nowrap;line-height:1}
+#mflag{position:absolute;left:2.5cqw;top:1.5cqw;font-size:3.5cqw;font-weight:700;color:#5b8bd6;visibility:hidden}
+.keys{display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:9.5cqw 17cqw repeat(4,14.5cqw);gap:1.8cqw}
+button{font:inherit;font-size:6.5cqw;font-weight:600;color:#333;cursor:pointer;min-width:0;
+  background:linear-gradient(#fff,#f3f5f8);border:.25cqw solid #b9c3cf;border-radius:1cqw;
+  box-shadow:0 .5cqw 0 rgba(120,135,155,.35);transition:transform .05s,box-shadow .05s,filter .1s;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none}
+button:hover{filter:brightness(.97)}
+button:active{transform:translateY(.4cqw);box-shadow:0 .1cqw 0 rgba(120,135,155,.35)}
+button:focus-visible{outline:.6cqw solid #5b8bd6;outline-offset:.2cqw}
+.mem{font-size:5.3cqw;color:#44546a;background:linear-gradient(#f6f8fb,#e6ebf1)}
+.red{background:linear-gradient(#e86a6a,#e25555);color:#fff;border-color:#c64545;font-size:7cqw}
+.green{background:linear-gradient(#34d27a,#2ac96f);color:#fff;border-color:#22a85b;font-size:9cqw;grid-row:span 2}
+.back,.plus{grid-column:span 2}
+/* Phones in portrait: fill the whole screen */
+@media (max-width:600px) and (orientation:portrait){
+  .calc{width:100%;height:100%;border-radius:0;box-shadow:none;display:flex;flex-direction:column}
+  .body{flex:1;min-height:0;display:flex;flex-direction:column;padding:2.5cqw 2cqw 2cqw}
+  .keys{flex:1;min-height:0;grid-template-rows:.6fr 1.1fr repeat(4,1fr)}
+}
+</style>
+</head>
+<body>
+<main class="calc" aria-label="Calculator">
+  <div class="header"><span>Calculator</span><span class="win" aria-hidden="true"></span></div>
+  <div class="body">
+    <div class="screen" id="screen" role="status" aria-live="polite"><span id="mflag">M</span><span id="val">0</span></div>
+    <div class="keys" id="keys">
+      <button class="mem" data-k="MC">MC</button><button class="mem" data-k="MR">MR</button><button class="mem" data-k="MS">MS</button>
+      <button class="mem" data-k="M+">M+</button><button class="mem" data-k="M-">M-</button>
+      <button class="red back" data-k="back" aria-label="Backspace">&larr;</button>
+      <button class="red" data-k="C">C</button><button class="red" data-k="neg">+/-</button>
+      <button data-k="sqrt" aria-label="Square root">&radic;</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="/">/</button><button data-k="%">%</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="*">*</button><button data-k="recip">1/x</button>
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="-">-</button>
+      <button class="green" data-k="=" aria-label="Equals">=</button>
+      <button data-k="0">0</button><button data-k=".">.</button><button class="plus" data-k="+">+</button>
+    </div>
+  </div>
+</main>
+<script>
+(() => {
+'use strict';
+const MAXD = 16, P = 16;                       // max typed digits, result significant digits
+const valEl = document.getElementById('val'), screenEl = document.getElementById('screen'), mflag = document.getElementById('mflag');
+
+/* ---------- Exact decimal arithmetic (BigInt): value = i / 10^s ---------- */
+const p10 = n => 10n ** BigInt(n), ABS = x => x < 0n ? -x : x, LEN = x => ABS(x).toString().length;
+const parse = str => {
+  const m = /^([+-]?)(\d*)\.?(\d*)(?:e([+-]?\d+))?$/i.exec(str);
+  if (!m || !(m[2] + m[3])) return {i: 0n, s: 0};
+  let i = BigInt(m[2] + m[3]), s = m[3].length - (m[4] ? +m[4] : 0);
+  if (s < 0) { i *= p10(-s); s = 0; }
+  return {i: m[1] === '-' ? -i : i, s};
+};
+const rnd = (d, p = P) => {                      // round half-up to p significant digits, strip trailing zeros
+  let a = ABS(d.i), s = d.s;
+  const len = a.toString().length;
+  if (len > p) { const k = len - p; a = (a + 5n * p10(k - 1)) / p10(k); s -= k; }
+  if (s < 0) { a *= p10(-s); s = 0; }
+  while (s > 0 && a % 10n === 0n) { a /= 10n; s--; }
+  return {i: d.i < 0n ? -a : a, s};
+};
+const toStr = d0 => {                            // -> display string, or null if out of range
+  const d = rnd(d0);
+  if (d.i === 0n) return '0';
+  const neg = d.i < 0n, ds = ABS(d.i).toString(), e = ds.length - 1 - d.s;
+  if (Math.abs(e) > 300) return null;
+  let out;
+  if (e >= 16 || e < -9) {
+    const t = ds.replace(/0+$/, '');
+    out = t[0] + (t.length > 1 ? '.' + t.slice(1) : '') + 'e' + (e < 0 ? '-' : '+') + Math.abs(e);
+  } else if (d.s === 0) out = ds;
+  else if (ds.length > d.s) out = ds.slice(0, ds.length - d.s) + '.' + ds.slice(ds.length - d.s);
+  else out = '0.' + '0'.repeat(d.s - ds.length) + ds;
+  return (neg ? '-' : '') + out;
+};
+const calc = (a, o, b) => {
+  if (o === '+' || o === '-') {
+    const s = Math.max(a.s, b.s), x = a.i * p10(s - a.s), y = b.i * p10(s - b.s);
+    return {i: o === '+' ? x + y : x - y, s};
+  }
+  if (o === '*') return {i: a.i * b.i, s: a.s + b.s};
+  if (o === '/') {
+    if (b.i === 0n) return null;
+    const R = 40 + Math.max(0, LEN(b.i) - LEN(a.i));
+    return {i: a.i * p10(b.s + R) / b.i, s: a.s + R};
+  }
+  return b;
+};
+const isqrt = n => {
+  if (n < 2n) return n;
+  let x = 1n << BigInt((n.toString(2).length + 1) >> 1);
+  for (;;) { const y = (x + n / x) >> 1n; if (y >= x) return x; x = y; }
+};
+const sqrtD = d => {
+  let i = d.i, s = d.s;
+  if (s % 2) { i *= 10n; s++; }
+  return {i: isqrt(i * p10(80)), s: s / 2 + 40};
+};
+
+/* ---------- State machine ---------- */
+const S = {cur: '0', acc: null, op: null, fresh: false, afterOp: false, eq: false,
+           lastOp: null, lastB: null, err: false, mem: {i: 0n, s: 0}, memSet: false};
+const num = () => parse(S.cur);
+
+function setError() {
+  Object.assign(S, {cur: 'Error', err: true, acc: null, op: null, fresh: true, afterOp: false, eq: false, lastOp: null, lastB: null});
+  return false;
+}
+function commit(r) {                             // show a result; Error on null / out of range
+  if (!r) return setError();
+  const s = toStr(r);
+  if (s === null) return setError();
+  S.cur = s; return true;
+}
+function clearErr() {
+  if (S.err) Object.assign(S, {cur: '0', err: false, acc: null, op: null, fresh: false, afterOp: false, eq: false});
+}
+function newNumber() {
+  clearErr();
+  if (S.fresh) { S.cur = '0'; S.fresh = false; }
+  if (S.eq) { S.eq = false; S.lastOp = null; }
+  S.afterOp = false;
+}
+function digit(d) {
+  newNumber();
+  if (S.cur === '0') S.cur = d;
+  else if (S.cur === '-0') S.cur = '-' + d;
+  else if (S.cur.replace(/[-.]/g, '').length < MAXD) S.cur += d;
+}
+function dot() { newNumber(); if (!S.cur.includes('.')) S.cur += '.'; }
+
+function operator(o) {
+  if (S.err) return;
+  if (S.op && S.afterOp) { S.op = o; return; }   // consecutive operators: replace
+  if (S.op) {                                    // chained calculation
+    const r = rnd(calc(S.acc, S.op, num()) || {i: 0n, s: 0});
+    if (calc(S.acc, S.op, num()) === null) return void setError();
+    if (!commit(r)) return;
+    S.acc = r;
+  } else S.acc = rnd(num());
+  S.op = o; S.fresh = true; S.afterOp = true; S.eq = false;
+}
+function equals() {
+  if (S.err) return;
+  let a, o, b;
+  if (S.op) { a = S.acc; o = S.op; b = num(); }
+  else if (S.eq && S.lastOp) { a = num(); o = S.lastOp; b = S.lastB; }   // repeat last operation
+  else return;
+  if (!commit(calc(a, o, b))) return;
+  S.lastOp = o; S.lastB = b; S.op = null; S.acc = null;
+  S.fresh = true; S.eq = true; S.afterOp = false;
+}
+function back() {
+  if (S.err) return clearErr();
+  if (S.fresh) return;
+  S.cur = S.cur.slice(0, -1);
+  if (S.cur === '' || S.cur === '-' || S.cur === '-0') S.cur = '0';
+}
+function negate() {
+  if (S.err) return;
+  if (num().i === 0n && !S.cur.includes('.')) return;
+  S.cur = S.cur.startsWith('-') ? S.cur.slice(1) : '-' + S.cur;
+  S.afterOp = false;
+}
+function unary(fn) {                             // sqrt, 1/x, %
+  if (S.err) return;
+  if (commit(fn(num()))) { S.fresh = true; S.afterOp = false; }
+}
+const sqrt = () => unary(n => n.i < 0n ? null : sqrtD(n));
+const recip = () => unary(n => calc({i: 1n, s: 0}, '/', n));
+const percent = () => unary(n => {
+  // 200 + 10 % -> 20 (10% of 200); 200 * 10 % -> 0.1; plain 50 % -> 0.5
+  if ((S.op === '+' || S.op === '-') && S.acc) return {i: S.acc.i * n.i, s: S.acc.s + n.s + 2};
+  return {i: n.i, s: n.s + 2};
+});
+function memory(k) {
+  if (k === 'MC') { S.mem = {i: 0n, s: 0}; S.memSet = false; return; }
+  if (k === 'MR') {
+    if (!S.memSet) return;
+    clearErr();
+    if (commit(S.mem)) { S.fresh = true; S.afterOp = false; }
+    return;
+  }
+  if (S.err) return;
+  const n = num();
+  if (k === 'MS') S.mem = rnd(n);
+  else S.mem = rnd(calc(S.mem, k === 'M+' ? '+' : '-', n));
+  S.memSet = true; S.fresh = true;
+}
+function hardReset() {
+  Object.assign(S, {cur: '0', acc: null, op: null, fresh: false, afterOp: false, eq: false,
+                    lastOp: null, lastB: null, err: false, mem: {i: 0n, s: 0}, memSet: false});
+}
+function press(k) {
+  if (/^[0-9]$/.test(k)) digit(k);
+  else switch (k) {
+    case '.': dot(); break;
+    case '+': case '-': case '*': case '/': operator(k); break;
+    case '=': equals(); break;
+    case 'back': back(); break;
+    case 'C': hardReset(); break;
+    case 'neg': negate(); break;
+    case 'sqrt': sqrt(); break;
+    case 'recip': recip(); break;
+    case '%': percent(); break;
+    default: memory(k);
+  }
+  render();
+}
+
+/* ---------- Rendering ---------- */
+function fit() {
+  valEl.style.fontSize = '';
+  const cs = getComputedStyle(screenEl);
+  const avail = screenEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  let fs = parseFloat(getComputedStyle(valEl).fontSize);
+  while (valEl.offsetWidth > avail && fs > 8) { fs--; valEl.style.fontSize = fs + 'px'; }
+}
+function render() {
+  valEl.textContent = S.cur;
+  mflag.style.visibility = S.memSet ? 'visible' : 'hidden';
+  fit();
+}
+document.getElementById('keys').addEventListener('click', e => {
+  const b = e.target.closest('button[data-k]');
+  if (b) press(b.dataset.k);
+});
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (/^[0-9]$/.test(k) || '+-*/%'.includes(k) && k.length === 1) press(k);
+  else if (k === '.' || k === ',') press('.');
+  else if (k === 'Enter' || k === '=') press('=');
+  else if (k === 'Backspace') press('back');
+  else if (k === 'Escape' || k === 'Delete') press('C');
+  else return;
+  e.preventDefault();
+});
+if ('ResizeObserver' in window) new ResizeObserver(fit).observe(screenEl); else window.addEventListener('resize', fit);
+render();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
